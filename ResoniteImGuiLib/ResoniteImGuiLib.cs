@@ -8,6 +8,7 @@ using ImGuiUnityInject;
 using UnityEngine.SceneManagement;
 using System.Linq;
 using UnityFrooxEngineRunner;
+using System.Collections.Generic;
 
 namespace ResoniteImGuiLib;
 
@@ -19,9 +20,17 @@ public static class ImGuiLib
     }
     public static ImGuiInstance GetOrCreateInstance(string name = "global", ImGuiReady onReady = null)
     {
-        return ImGuiInstance.GetOrCreate((gui, isNew) =>
+        return ImGuiInstance.GetOrCreate(name, (gui, isNew) =>
         {
-            if (isNew) gui._camera = SceneManager.GetActiveScene().GetRootGameObjects().Where(go => go.name == "FrooxEngine").First().GetComponent<FrooxEngineRunner>().OverlayCamera;
+            if (isNew)
+            {
+                gui._camera = SceneManager.GetActiveScene().GetRootGameObjects().Where(go => go.name == "FrooxEngine").First().GetComponent<FrooxEngineRunner>().OverlayCamera;
+                gui.Layout += () =>
+                {
+                    var io = ImGui.GetIO();
+                    ResoniteImGuiLib.WantCapture[name] = (io.WantCaptureMouse, io.WantCaptureKeyboard);
+                };
+            }
 
             if (onReady != null) onReady(gui, isNew);
             else gui.enabled = true;
@@ -33,21 +42,21 @@ public class ResoniteImGuiLib : ResoniteMod
 {
     public override string Name => "ResoniteImGuiLib";
     public override string Author => "art0007i";
-    public override string Version => "1.0.0";
+    public override string Version => "1.1.0";
     public override string Link => "https://github.com/art0007i/ResoniteImGuiLib/";
     public override void OnEngineInit()
     {
         Harmony harmony = new Harmony("me.art0007i.ResoniteImGuiLib");
         harmony.PatchAll();
     }
+    internal static Dictionary<string, (bool, bool)> WantCapture = new();
 
     [HarmonyPatch(typeof(MouseDriver), "UpdateMouse")]
     class CursorUpdatePatch
     {
         public static bool Prefix(Mouse mouse)
         {
-            var io = ImGui.GetIO();
-            if (io.WantCaptureMouse)
+            if (WantCapture.Any(x=>x.Value.Item1))
             {
                 mouse.LeftButton.UpdateState(false);
                 mouse.RightButton.UpdateState(false);
@@ -72,7 +81,7 @@ public class ResoniteImGuiLib : ResoniteMod
     {
         public static bool Prefix()
         {
-            if (ImGui.GetIO().WantCaptureKeyboard)
+            if (WantCapture.Any(x => x.Value.Item2))
             {
                 return false;
             }
@@ -84,7 +93,7 @@ public class ResoniteImGuiLib : ResoniteMod
     {
         public static bool Prefix(ref bool __result)
         {
-            if (ImGui.GetIO().WantCaptureKeyboard)
+            if (WantCapture.Any(x => x.Value.Item2))
             {
                 __result = false;
                 return false;
